@@ -22,6 +22,7 @@ public class StableMulticast implements IStableMulticast {
     private Map<Integer, String> processAddresses; // Map de endereços dos processos
     private List<DelayedMessage> delayedMessages; // Lista de mensagens atrasadas
 
+    @SuppressWarnings("deprecation")
     public StableMulticast(int processId, String groupAddress, int port, int numProcesses, Map<Integer, String> processAddresses) throws Exception {
         this.processId = processId;
         this.vectorClock = new int[numProcesses];
