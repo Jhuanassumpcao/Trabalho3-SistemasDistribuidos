@@ -56,7 +56,7 @@ public class StableMulticast implements IStableMulticast {
         System.out.println("Relógio lógico ao enviar: " + Arrays.toString(vectorClock));
         System.out.println("Matriz de relógios ao enviar: " + Arrays.deepToString(matrixClock));
     }
-
+    
     public void usend(String msg, int targetProcessId) throws Exception {
         vectorClock[processId]++;
         matrixClock[processId][processId] = vectorClock[processId];
@@ -70,8 +70,17 @@ public class StableMulticast implements IStableMulticast {
         System.out.println("Relógio lógico ao enviar: " + Arrays.toString(vectorClock));
         System.out.println("Matriz de relógios ao enviar: " + Arrays.deepToString(matrixClock));
     }
-
+    
     public void sendDelayedMessages() throws Exception {
+        delayedMessages.sort((m1, m2) -> {
+            for (int i = 0; i < m1.vectorClock.length; i++) {
+                if (m1.vectorClock[i] != m2.vectorClock[i]) {
+                    return Integer.compare(m1.vectorClock[i], m2.vectorClock[i]);
+                }
+            }
+            return 0;
+        });
+    
         for (DelayedMessage delayedMessage : new ArrayList<>(delayedMessages)) {
             if (delayedMessage.isMulticast) {
                 msend(delayedMessage.message, this);
@@ -81,6 +90,7 @@ public class StableMulticast implements IStableMulticast {
             delayedMessages.remove(delayedMessage);
         }
     }
+    
 
     public void discoverInstances() throws Exception {
         String discoveryMessage = "DISCOVER|" + processId;
@@ -242,7 +252,7 @@ public class StableMulticast implements IStableMulticast {
                 if (sendNow.equalsIgnoreCase("s")) {
                     sm.msend(msg, sm);
                 } else {
-                    sm.delayedMessages.add(new DelayedMessage(msg, -1, true));
+                    sm.delayedMessages.add(new DelayedMessage(msg, -1, true, sm.vectorClock.clone()));
                     System.out.println("Mensagem multicast adicionada à lista de mensagens atrasadas.");
                 }
             } else if (command.equals("u")) {
@@ -255,7 +265,7 @@ public class StableMulticast implements IStableMulticast {
                 if (sendNow.equalsIgnoreCase("s")) {
                     sm.usend(msg, targetProcessId);
                 } else {
-                    sm.delayedMessages.add(new DelayedMessage(msg, targetProcessId, false));
+                    sm.delayedMessages.add(new DelayedMessage(msg, targetProcessId, false, sm.vectorClock.clone()));
                     System.out.println("Mensagem unicast adicionada à lista de mensagens atrasadas.");
                 }
             } else if (command.equals("d")) {
@@ -270,15 +280,17 @@ public class StableMulticast implements IStableMulticast {
         scanner.close();
     }
 
-    private static class DelayedMessage {
+    public static class DelayedMessage {
         String message;
         int targetProcessId;
         boolean isMulticast;
-
-        DelayedMessage(String message, int targetProcessId, boolean isMulticast) {
+        int[] vectorClock;
+    
+        public DelayedMessage(String message, int targetProcessId, boolean isMulticast, int[] vectorClock) {
             this.message = message;
             this.targetProcessId = targetProcessId;
             this.isMulticast = isMulticast;
+            this.vectorClock = vectorClock;
         }
-    }
+    }    
 }
