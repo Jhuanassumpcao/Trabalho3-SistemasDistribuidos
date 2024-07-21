@@ -73,12 +73,6 @@ public class StableMulticast implements IStableMulticast {
         // envia a mensagem unicast
         String messageWithClock = msg + "|" + Arrays.toString(vectorClock);
         byte[] buffer = messageWithClock.getBytes();
-        System.out.println("Enviando mensagem unicast para " + targetProcessId + ": " + msg);
-        // printa todos os processos e seus endereços
-        for (Map.Entry<Integer, String> entry : processAddresses.entrySet()) {
-            System.out.println("Processo: " + entry.getKey() + " Endereço: " + entry.getValue());
-        }
-        System.out.println("Endereço do processo alvo: " + processAddresses.get(targetProcessId));
 
         InetAddress targetGroup = InetAddress.getByName(processAddresses.get(targetProcessId));
         DatagramPacket packet = new DatagramPacket(buffer, buffer.length, targetGroup, port);
