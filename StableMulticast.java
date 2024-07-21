@@ -68,10 +68,18 @@ public class StableMulticast implements IStableMulticast {
         // atualiza o relógio vetorial e a matriz de relógios
         vectorClock[processId]++;
         matrixClock[processId][processId] = vectorClock[processId];
+        
 
         // envia a mensagem unicast
         String messageWithClock = msg + "|" + Arrays.toString(vectorClock);
         byte[] buffer = messageWithClock.getBytes();
+        System.out.println("Enviando mensagem unicast para " + targetProcessId + ": " + msg);
+        // printa todos os processos e seus endereços
+        for (Map.Entry<Integer, String> entry : processAddresses.entrySet()) {
+            System.out.println("Processo: " + entry.getKey() + " Endereço: " + entry.getValue());
+        }
+        System.out.println("Endereço do processo alvo: " + processAddresses.get(targetProcessId));
+
         InetAddress targetGroup = InetAddress.getByName(processAddresses.get(targetProcessId));
         DatagramPacket packet = new DatagramPacket(buffer, buffer.length, targetGroup, port);
         socket.send(packet);
@@ -149,6 +157,9 @@ public class StableMulticast implements IStableMulticast {
                 if (!discoveredProcesses.contains(senderId)) {
                     discoveredProcesses.add(senderId);
                     System.out.println("Novo processo descoberto: " + senderId);
+
+                    // Adiciona o endereço do processo descoberto ao map de endereços
+                    processAddresses.put(senderId, packet.getAddress().getHostAddress());
                 }
             } else {
                 String msg = parts[0];
@@ -281,6 +292,7 @@ public class StableMulticast implements IStableMulticast {
             } else if (command.equals("u")) {
                 System.out.println("Digite o ID do processo de destino:");
                 int targetProcessId = Integer.parseInt(scanner.nextLine());
+                System.out.println("Processo alvo: " + targetProcessId);
 
                 System.out.println("Digite a mensagem unicast:");
                 String msg = scanner.nextLine();
