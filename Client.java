@@ -13,7 +13,7 @@ public class Client implements IStableMulticast {
     }
 
     private void init() throws Exception {
-        this.stableMulticast.run();
+        this.stableMulticast.start();
     }
 
     public static void main(String[] args) throws NumberFormatException, Exception {

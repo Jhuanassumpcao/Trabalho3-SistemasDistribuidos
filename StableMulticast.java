@@ -63,6 +63,7 @@ public class StableMulticast {
 
     private void addProcess(String ip, Integer port) {
         this.processesAdresses.add(ip + ":" + port);
+
     }
 
     private boolean isProcessDiscovered(String ip, Integer port) {
@@ -92,7 +93,8 @@ public class StableMulticast {
         matrixClock[processId][processId] = vectorClock[processId];
 
         // envia a mensagem multicast
-        String messageWithClock = msg + "|" + Arrays.toString(vectorClock);
+        String messageWithClock = msg + "|" + Arrays.toString(vectorClock) + "|" + processesAdresses.toString() + "|"
+                + unicastPort;
         byte[] buffer = messageWithClock.getBytes();
 
         for (String processAddress : processesAdresses) {
@@ -117,7 +119,8 @@ public class StableMulticast {
         matrixClock[processId][processId] = vectorClock[processId];
 
         // envia a mensagem unicast
-        String messageWithClock = msg + "|" + Arrays.toString(vectorClock);
+        String messageWithClock = msg + "|" + Arrays.toString(vectorClock) + "|" + processesAdresses.toString() + "|"
+                + unicastPort;
         byte[] buffer = messageWithClock.getBytes();
 
         InetAddress targetAddress = InetAddress.getByName(targetIp);
@@ -171,6 +174,19 @@ public class StableMulticast {
         System.out.println("Anunciada presença do processo " + processId);
     }
 
+    // Monta os itens de relógio recebido, de acordo com as posições de cada
+    // processo
+    public int[] mountReceivedClock(String[] clockItems, String[] processes) {
+        int[] receivedClock = new int[numProcesses];
+
+        for (int i = 0; i < processes.length; i++) {
+            int localIndex = processesAdresses.indexOf(processes[i]);
+            receivedClock[localIndex] = Integer.parseInt(clockItems[i]);
+        }
+
+        return receivedClock;
+    }
+
     // Método para receber mensagens multicast
     public void receiveMulticast() throws Exception {
         byte[] packetBuffer = new byte[1024];
@@ -179,9 +195,9 @@ public class StableMulticast {
         try {
             multicastSocket.receive(packet);
             String received = new String(packet.getData(), 0, packet.getLength());
-            System.out.println("Pacote multicast recebido: " + received);
+            System.out.println("Pacote multicast recebido:\n " + received);
             System.out.println(
-                    "Buffer recebido: " + Arrays.toString(Arrays.copyOf(packet.getData(), packet.getLength())));
+                    "Buffer recebido:\n " + Arrays.toString(Arrays.copyOf(packet.getData(), packet.getLength())));
 
             String[] parts = received.split("\\|");
             if (parts.length < 2) {
@@ -196,6 +212,7 @@ public class StableMulticast {
             } else if (messageType.equals("ANNOUNCE")) {
                 String senderIp = packet.getAddress().getHostAddress();
                 int senderUnicastPort = Integer.parseInt(parts[1]);
+
                 if (!isProcessDiscovered(senderIp, senderUnicastPort)) {
                     // Adiciona o endereço e a porta unicast do processo descoberto ao set
                     this.addProcess(packet.getAddress().getHostAddress(), senderUnicastPort);
@@ -205,21 +222,26 @@ public class StableMulticast {
                 }
             } else {
                 String msg = parts[0];
+                String senderIp = packet.getAddress().getHostAddress();
+                int senderUnicastPort = Integer.parseInt(parts[3]);
+
                 try {
                     String[] clockParts = parts[1].replaceAll("[\\[\\]\\s]", "").split(",");
-                    int[] receivedClock = new int[clockParts.length];
-                    for (int i = 0; i < clockParts.length; i++) {
-                        receivedClock[i] = Integer.parseInt(clockParts[i]);
-                    }
-                    if (receivedClock.length != vectorClock.length) {
+                    String[] processes = parts[2].replaceAll("[\\[\\]\\s]", "").split(",");
+
+                    int[] receivedClock = mountReceivedClock(clockParts, processes);
+                    if (receivedClock.length != numProcesses) {
                         System.out.println("Tamanho do relógio vetorial inválido");
                         return;
                     }
+
+                    matrixClock[getProcessId(senderIp, senderUnicastPort)] = receivedClock;
+                    vectorClock[processId]++;
                     for (int i = 0; i < vectorClock.length; i++) {
                         vectorClock[i] = Math.max(vectorClock[i], receivedClock[i]);
                         matrixClock[processId][i] = vectorClock[i];
                     }
-                    vectorClock[processId]++;
+
                     // Adiciona mensagem recebida ao buffer global
                     buffer.add(received);
                     client.deliver(msg);
@@ -244,9 +266,9 @@ public class StableMulticast {
         try {
             unicastSocket.receive(packet);
             String received = new String(packet.getData(), 0, packet.getLength());
-            System.out.println("Pacote unicast recebido: " + received);
+            System.out.println("Pacote unicast recebido:\n " + received);
             System.out.println(
-                    "Buffer recebido: " + Arrays.toString(Arrays.copyOf(packet.getData(), packet.getLength())));
+                    "Buffer recebido:\n " + Arrays.toString(Arrays.copyOf(packet.getData(), packet.getLength())));
 
             String[] parts = received.split("\\|");
             if (parts.length < 2) {
@@ -255,21 +277,27 @@ public class StableMulticast {
             }
 
             String msg = parts[0];
+            String senderIp = packet.getAddress().getHostAddress();
+            int senderUnicastPort = Integer.parseInt(parts[3]);
+
             try {
                 String[] clockParts = parts[1].replaceAll("[\\[\\]\\s]", "").split(",");
-                int[] receivedClock = new int[clockParts.length];
-                for (int i = 0; i < clockParts.length; i++) {
-                    receivedClock[i] = Integer.parseInt(clockParts[i]);
-                }
-                if (receivedClock.length != vectorClock.length) {
+                String[] processes = parts[2].replaceAll("[\\[\\]\\s]", "").split(",");
+                int[] receivedClock = mountReceivedClock(clockParts, processes);
+
+                if (receivedClock.length != numProcesses) {
+                    System.out.println(receivedClock.length + " " + numProcesses);
                     System.out.println("Tamanho do relógio vetorial inválido");
                     return;
                 }
+
+                matrixClock[getProcessId(senderIp, senderUnicastPort)] = receivedClock;
+                vectorClock[processId]++;
                 for (int i = 0; i < vectorClock.length; i++) {
                     vectorClock[i] = Math.max(vectorClock[i], receivedClock[i]);
                     matrixClock[processId][i] = vectorClock[i];
                 }
-                vectorClock[processId]++;
+
                 // Adiciona mensagem recebida ao buffer global
                 buffer.add(received);
                 client.deliver(msg);
@@ -314,7 +342,7 @@ public class StableMulticast {
         }
     }
 
-    public void run() throws Exception {
+    public void start() throws Exception {
         Thread.sleep(2000);
         Thread receiverThread = new Thread(() -> {
             try {
