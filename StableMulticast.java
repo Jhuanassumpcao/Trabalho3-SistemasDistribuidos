@@ -315,7 +315,6 @@ public class StableMulticast {
 
     private void discardStableMessages() {
         for (String msg : new ArrayList<>(buffer)) {
-            System.out.println(msg);
             String[] parts = msg.split("\\|");
             String[] clockParts = parts[1].replaceAll("[\\[\\]\\s]", "").split(",");
             String[] processes = parts[2].replaceAll("[\\[\\]\\s]", "").split(",");
