@@ -1,8 +1,4 @@
-terminal 1:
-javac StableMulticast.java
+javac .\Client.java .\IStableMulticast.java .\StableMulticast.class
 
-terminal 2:
-java StableMulticast 0 127.0.0.1 5000 3
+java Client <seuIpPublico> port
 
-terminal 3:
-java StableMulticast 1 127.0.0.2 5000 3

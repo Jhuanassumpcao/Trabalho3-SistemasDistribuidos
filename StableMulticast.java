@@ -201,6 +201,7 @@ public class StableMulticast {
                     this.addProcess(packet.getAddress().getHostAddress(), senderUnicastPort);
 
                     System.out.println("Novo processo descoberto: " + getProcessId(senderIp, senderUnicastPort));
+                    printActiveProcesses();
                 }
             } else {
                 String msg = parts[0];
