@@ -313,29 +313,38 @@ public class StableMulticast {
         }
     }
 
-    private void discardStableMessages() {
+    private synchronized void discardStableMessages() {
+        List<String> stableMessages = new ArrayList<>();
+    
         for (String msg : new ArrayList<>(buffer)) {
             String[] parts = msg.split("\\|");
             String[] clockParts = parts[1].replaceAll("[\\[\\]\\s]", "").split(",");
             String[] processes = parts[2].replaceAll("[\\[\\]\\s]", "").split(",");
             int[] receivedClock = mountReceivedClock(clockParts, processes);
             int senderId = Integer.parseInt(parts[4]);
-            
-            // Verifica se a mensagem está estável
-            boolean stable = true;
-            for (int i = 0; i < matrixClock.length; i++) {
-                if (matrixClock[i].length <= senderId || matrixClock[i][senderId] < receivedClock[senderId]) {
-                    stable = false;
-                    break;
-                }
+    
+            for (int i = 0; i < clockParts.length; i++) {
+                receivedClock[i] = Integer.parseInt(clockParts[i]);
             }
 
-            if (stable) {
-                buffer.remove(msg);
-                System.out.println("Mensagem estável descartada: " + msg);
+            int msgClockValue = receivedClock[senderId];
+
+            int minClockValue = Integer.MAX_VALUE;
+            for (int i = 0; i < matrixClock.length; i++) {
+                minClockValue = Math.min(minClockValue, matrixClock[i][senderId]);
+            }
+    
+            if (msgClockValue <= minClockValue) {
+                stableMessages.add(msg);
             }
         }
+    
+        for (String stableMsg : stableMessages) {
+            buffer.remove(stableMsg);
+            System.out.println("Mensagem estável descartada: " + stableMsg);
+        }
     }
+    
 
     public void start() throws Exception {
         Thread.sleep(2000);
