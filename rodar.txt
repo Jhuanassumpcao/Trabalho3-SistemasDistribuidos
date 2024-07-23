@@ -1,4 +1,4 @@
-javac .\Client.java .\IStableMulticast.java .\StableMulticast.class
+javac .\Client.java .\IStableMulticast.java .\StableMulticast.java
 
 java Client <seuIpPublico> port
 
