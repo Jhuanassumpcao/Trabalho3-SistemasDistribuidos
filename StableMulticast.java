@@ -299,7 +299,7 @@ public class StableMulticast {
                 }
 
                 // Adiciona mensagem recebida ao buffer global
-                buffer.add(received);
+                buffer.add(received + "|" + getProcessId(senderIp, senderUnicastPort));
                 client.deliver(msg);
                 System.out.println("Relógio lógico atualizado ao receber: " + Arrays.toString(vectorClock));
                 System.out.println("Matriz de relógios atualizada ao receber: " + Arrays.deepToString(matrixClock));
@@ -315,17 +315,13 @@ public class StableMulticast {
 
     private void discardStableMessages() {
         for (String msg : new ArrayList<>(buffer)) {
+            System.out.println(msg);
             String[] parts = msg.split("\\|");
-            if (parts.length != 2)
-                continue;
-
             String[] clockParts = parts[1].replaceAll("[\\[\\]\\s]", "").split(",");
-            int[] receivedClock = new int[clockParts.length];
-            for (int i = 0; i < clockParts.length; i++) {
-                receivedClock[i] = Integer.parseInt(clockParts[i]);
-            }
-            int senderId = Integer.parseInt(clockParts[0]); // Pegando o id do remetente corretamente
-
+            String[] processes = parts[2].replaceAll("[\\[\\]\\s]", "").split(",");
+            int[] receivedClock = mountReceivedClock(clockParts, processes);
+            int senderId = Integer.parseInt(parts[4]);
+            
             // Verifica se a mensagem está estável
             boolean stable = true;
             for (int i = 0; i < matrixClock.length; i++) {
