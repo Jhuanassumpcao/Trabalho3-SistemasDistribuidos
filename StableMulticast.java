@@ -196,9 +196,7 @@ public class StableMulticast {
             multicastSocket.receive(packet);
             String received = new String(packet.getData(), 0, packet.getLength());
             System.out.println("Pacote multicast recebido:\n " + received);
-            System.out.println(
-                    "Buffer recebido:\n " + Arrays.toString(Arrays.copyOf(packet.getData(), packet.getLength())));
-
+            
             String[] parts = received.split("\\|");
             if (parts.length < 2) {
                 System.out.println("Formato de mensagem inválido");
@@ -267,9 +265,6 @@ public class StableMulticast {
             unicastSocket.receive(packet);
             String received = new String(packet.getData(), 0, packet.getLength());
             System.out.println("Pacote unicast recebido:\n " + received);
-            System.out.println(
-                    "Buffer recebido:\n " + Arrays.toString(Arrays.copyOf(packet.getData(), packet.getLength())));
-
             String[] parts = received.split("\\|");
             if (parts.length < 2) {
                 System.out.println("Formato de mensagem inválido");
@@ -305,6 +300,7 @@ public class StableMulticast {
                 System.out.println("Matriz de relógios atualizada ao receber: " + Arrays.deepToString(matrixClock));
                 // Descartar mensagens estáveis
                 discardStableMessages();
+                System.out.println("Buffer: " + buffer);
             } catch (NumberFormatException e) {
                 System.out.println("Erro ao analisar o relógio vetorial: " + e.getMessage());
             }
