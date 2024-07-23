@@ -2,19 +2,10 @@ import java.net.DatagramPacket;
 import java.net.InetAddress;
 import java.net.MulticastSocket;
 import java.net.DatagramSocket;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Scanner;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Random;
 
-public class StableMulticast implements IStableMulticast {
+public class StableMulticast {
     private int processId;
     private int[] vectorClock;
     private MulticastSocket multicastSocket;
@@ -24,21 +15,23 @@ public class StableMulticast implements IStableMulticast {
     private int unicastPort;
     private AtomicBoolean running;
     private List<Integer> discoveredProcesses;
-     private static final Set<Integer> usedIds = new HashSet<>();
-    private int[][] matrixClock; // Matriz de Relógios Vetoriais (MC)
-    private List<String> buffer; // Lista de mensagens recebidas
-    private Map<Integer, String> processAddresses; // Map de endereços dos processos
-    private Map<Integer, Integer> processUnicastPorts; // Map de portas unicast dos processos
-    private List<DelayedMessage> delayedMessages; // Lista de mensagens atrasadas
-    private static final String GROUP_ADDRESS = "230.0.0.0"; // Mocked group address
-    private static final int MULTICAST_PORT = 5000; // Mocked multicast port
-    private static final int NUM_PROCESSES = 3; // Tamanho do vetor fixado
+    private static int currentProcessId = 0;
+    private static final Set<Integer> usedIds = new HashSet<>();
+    private int[][] matrixClock;
+    private List<String> buffer;
+    private Map<Integer, String> processAddresses;
+    private Map<Integer, Integer> processUnicastPorts;
+    private List<DelayedMessage> delayedMessages;
+    private static final String GROUP_ADDRESS = "230.0.0.0";
+    private static final int MULTICAST_PORT = 5000;
+    private static final int NUM_PROCESSES = 3;
+    private final IStableMulticast client;
 
     @SuppressWarnings("deprecation")
     public StableMulticast(String ip, Integer port, IStableMulticast client) throws Exception {
-        this.processId = generateUniqueProcessId(); // Gera um ID único
+        this.processId = generateUniqueProcessId();
         this.vectorClock = new int[NUM_PROCESSES];
-        this.matrixClock = new int[NUM_PROCESSES][NUM_PROCESSES]; // inicializa a matriz de relógios vetoriais
+        this.matrixClock = new int[NUM_PROCESSES][NUM_PROCESSES];
         this.multicastSocket = new MulticastSocket(MULTICAST_PORT);
         this.unicastSocket = new DatagramSocket(port);
         this.group = InetAddress.getByName(GROUP_ADDRESS);
@@ -47,15 +40,18 @@ public class StableMulticast implements IStableMulticast {
         this.unicastPort = port;
         this.running = new AtomicBoolean(true);
         this.discoveredProcesses = new ArrayList<>();
-        this.discoveredProcesses.add(processId);
-        this.buffer = new ArrayList<>(); // Inicializa o buffer de mensagens
+        this.buffer = new ArrayList<>();
         this.processAddresses = new HashMap<>();
         this.processUnicastPorts = new HashMap<>();
-        this.delayedMessages = new ArrayList<>(); // Inicializa a lista de mensagens atrasadas
-        this.processAddresses.put(processId, ip); // Inicializa o map de endereços
-        this.processUnicastPorts.put(processId, port); // Inicializa o map de portas unicast
+        this.delayedMessages = new ArrayList<>();
+        this.processAddresses.put(processId, ip);
+        this.processUnicastPorts.put(processId, port);
+        this.client = client;
         System.out.println("Processo " + processId + " conectado ao grupo multicast " + GROUP_ADDRESS + ":" + MULTICAST_PORT);
+        receive();
+        discoverInstances();
     }
+
     private synchronized int generateUniqueProcessId() {
         Random rand = new Random();
         int id;
@@ -66,18 +62,46 @@ public class StableMulticast implements IStableMulticast {
         return id;
     }
 
-    @Override
-    public void deliver(String msg) {
-        System.out.println("Mensagem recebida: " + msg);
+    public void msend() {
+        Scanner scanner = new Scanner(System.in);
+
+        try {
+            while (true) {
+                System.out.println("Escolha uma ação: \n1. Enviar mensagem multicast\n2. Enviar mensagem unicast\n3. Sair");
+                String choice = scanner.nextLine();
+
+                if (choice.equals("1")) {
+                    System.out.println("Digite a mensagem multicast:");
+                    String msg = scanner.nextLine();
+                    sendMulticast(msg);
+                } else if (choice.equals("2")) {
+                    System.out.println("Digite o ID do processo destino:");
+                    int targetProcessId = Integer.parseInt(scanner.nextLine());
+                    System.out.println("Digite a mensagem unicast:");
+                    String msg = scanner.nextLine();
+                    sendUnicast(msg, targetProcessId);
+                } else if (choice.equals("3")) {
+                    break;
+                } else {
+                    System.out.println("Opção inválida. Tente novamente.");
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            scanner.close();
+            try {
+                close();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
     }
 
-    // Método para enviar mensagem multicast
-    public void msend(String msg) throws Exception {
-        // atualiza o relógio vetorial e a matriz de relógios
+    private void sendMulticast(String msg) throws Exception {
         vectorClock[processId]++;
         matrixClock[processId][processId] = vectorClock[processId];
 
-        // envia a mensagem multicast
         String messageWithClock = msg + "|" + Arrays.toString(vectorClock);
         byte[] buffer = messageWithClock.getBytes();
         DatagramPacket packet = new DatagramPacket(buffer, buffer.length, group, multicastPort);
@@ -88,13 +112,10 @@ public class StableMulticast implements IStableMulticast {
         System.out.println("Matriz de relógios ao enviar: " + Arrays.deepToString(matrixClock));
     }
 
-    // Método para enviar mensagem unicast
-    public void usend(String msg, int targetProcessId) throws Exception {
-        // atualiza o relógio vetorial e a matriz de relógios
+    private void sendUnicast(String msg, int targetProcessId) throws Exception {
         vectorClock[processId]++;
         matrixClock[processId][processId] = vectorClock[processId];
 
-        // envia a mensagem unicast
         String messageWithClock = msg + "|" + Arrays.toString(vectorClock);
         byte[] buffer = messageWithClock.getBytes();
 
@@ -108,9 +129,7 @@ public class StableMulticast implements IStableMulticast {
         System.out.println("Matriz de relógios ao enviar: " + Arrays.deepToString(matrixClock));
     }
 
-    // Método para enviar as mensagens atrasadas
     public void sendDelayedMessages() throws Exception {
-        // Ordena as mensagens atrasadas por relógio vetorial
         delayedMessages.sort((m1, m2) -> {
             for (int i = 0; i < m1.vectorClock.length; i++) {
                 if (m1.vectorClock[i] != m2.vectorClock[i]) {
@@ -120,52 +139,49 @@ public class StableMulticast implements IStableMulticast {
             return 0;
         });
 
-        // Envia as mensagens atrasadas
         for (DelayedMessage delayedMessage : new ArrayList<>(delayedMessages)) {
             if (delayedMessage.isMulticast) {
-                msend(delayedMessage.message);
+                sendMulticast(delayedMessage.message);
             } else {
-                usend(delayedMessage.message, delayedMessage.targetProcessId);
+                sendUnicast(delayedMessage.message, delayedMessage.targetProcessId);
             }
             delayedMessages.remove(delayedMessage);
         }
+        discardStableMessages();
     }
 
-    // Método para descobrir instâncias
     public void discoverInstances() throws Exception {
         String discoveryMessage = "DISCOVER|" + processId;
         byte[] buffer = discoveryMessage.getBytes();
         DatagramPacket packet = new DatagramPacket(buffer, buffer.length, group, multicastPort);
         multicastSocket.send(packet);
         System.out.println("Enviada mensagem de descoberta");
+        System.out.println("Buffer enviado: " + Arrays.toString(buffer));
     }
 
-    // Método para anunciar que o processo está presente
     public void announcePresence() throws Exception {
         String announceMessage = "ANNOUNCE|" + processId + "|" + unicastPort;
         byte[] buffer = announceMessage.getBytes();
         DatagramPacket packet = new DatagramPacket(buffer, buffer.length, group, multicastPort);
         multicastSocket.send(packet);
         System.out.println("Anunciada presença do processo " + processId);
+        System.out.println("Buffer enviado: " + Arrays.toString(buffer));
     }
 
-    // Método para receber mensagens multicast
     public void receiveMulticast() throws Exception {
         byte[] packetBuffer = new byte[1024];
         DatagramPacket packet = new DatagramPacket(packetBuffer, packetBuffer.length);
         multicastSocket.setSoTimeout(1000);
         try {
             multicastSocket.receive(packet);
-            String received = new String(packet.getData(), 0, packet.getLength());
+            int length = packet.getLength();
+            byte[] data = Arrays.copyOf(packet.getData(), length);
+            String received = new String(data, 0, length);
             System.out.println("Pacote multicast recebido: " + received);
-            System.out.println("Buffer recebido: " + Arrays.toString(Arrays.copyOf(packet.getData(), packet.getLength())));
-
+            System.out.println("Buffer recebido: " + Arrays.toString(data));
             String[] parts = received.split("\\|");
-            if (parts.length < 2) {
-                System.out.println("Formato de mensagem inválido");
-                return;
-            }
-
+            if (parts.length < 2) return;
+    
             String messageType = parts[0];
             if (messageType.equals("DISCOVER")) {
                 announcePresence();
@@ -174,189 +190,107 @@ public class StableMulticast implements IStableMulticast {
                 int senderUnicastPort = Integer.parseInt(parts[2]);
                 if (!discoveredProcesses.contains(senderId)) {
                     discoveredProcesses.add(senderId);
-                    System.out.println("Novo processo descoberto: " + senderId);
-
-                    // Adiciona o endereço e a porta unicast do processo descoberto aos maps
                     processAddresses.put(senderId, packet.getAddress().getHostAddress());
                     processUnicastPorts.put(senderId, senderUnicastPort);
+                    System.out.println("Novo processo descoberto: " + senderId);
                 }
                 System.out.println("Anunciada presença do processo " + senderId);
             } else {
-                String msg = parts[0];
-                try {
-                    String[] clockParts = parts[1].replaceAll("[\\[\\]\\s]", "").split(",");
-                    int[] receivedClock = new int[clockParts.length];
-                    for (int i = 0; i < clockParts.length; i++) {
-                        receivedClock[i] = Integer.parseInt(clockParts[i]);
-                    }
-                    if (receivedClock.length != vectorClock.length) {
-                        System.out.println("Tamanho do relógio vetorial inválido");
-                        return;
-                    }
-                    for (int i = 0; i < vectorClock.length; i++) {
-                        vectorClock[i] = Math.max(vectorClock[i], receivedClock[i]);
-                        matrixClock[processId][i] = vectorClock[i];
-                    }
-                    vectorClock[processId]++;
-                    deliver(msg);
-                    // Adiciona a mensagem recebida ao buffer
-                    buffer.add(received);
-                } catch (NumberFormatException e) {
-                    System.out.println("Formato de relógio vetorial inválido");
-                }
+                handleReceivedMessage(received);
             }
-        } catch (Exception e) {
-            // Timeout ou erro ao receber pacote
+        } catch (java.net.SocketTimeoutException e) {
         }
+        discardStableMessages();
     }
-
-    private void discardStableMessages() {
-        for (String msg : new ArrayList<>(buffer)) {
-            String[] parts = msg.split("\\|");
-            if (parts.length != 2) continue;
-            String[] clockParts = parts[1].replaceAll("[\\[\\]\\s]", "").split(",");
-            int[] receivedClock = new int[clockParts.length];
-            for (int i = 0; i < clockParts.length; i++) {
-                receivedClock[i] = Integer.parseInt(clockParts[i]);
-            }
-            int senderId = Integer.parseInt(clockParts[0]); // Pegando o id do remetente corretamente
-
-            // Verifica se a mensagem está estável
-            boolean stable = true;
-            for (int i = 0; i < matrixClock.length; i++) {
-                if (matrixClock[i].length <= senderId || matrixClock[i][senderId] < receivedClock[senderId]) {
-                    stable = false;
-                    break;
-                }
-            }
-            if (stable) {
-                buffer.remove(msg);
-                System.out.println("Mensagem estável descartada: " + msg);
-            }
-        }
-    }
-
-    // Método para receber mensagens unicast
+    
     public void receiveUnicast() throws Exception {
         byte[] packetBuffer = new byte[1024];
         DatagramPacket packet = new DatagramPacket(packetBuffer, packetBuffer.length);
         unicastSocket.setSoTimeout(1000);
         try {
             unicastSocket.receive(packet);
-            String received = new String(packet.getData(), 0, packet.getLength());
+            int length = packet.getLength();
+            byte[] data = Arrays.copyOf(packet.getData(), length);
+            String received = new String(data, 0, length);
             System.out.println("Pacote unicast recebido: " + received);
-            System.out.println("Buffer recebido: " + Arrays.toString(Arrays.copyOf(packet.getData(), packet.getLength())));
+            System.out.println("Buffer recebido: " + Arrays.toString(data));
+            handleReceivedMessage(received);
+        } catch (java.net.SocketTimeoutException e) {
+        }
+        discardStableMessages();
+    }
+    
 
-            String[] parts = received.split("\\|");
-            if (parts.length < 2) {
-                System.out.println("Formato de mensagem inválido");
-                return;
-            }
+    private void handleReceivedMessage(String received) {
+        String[] parts = received.split("\\|");
+        if (parts.length < 2) return;
 
-            String msg = parts[0];
-            try {
-                String[] clockParts = parts[1].replaceAll("[\\[\\]\\s]", "").split(",");
-                int[] receivedClock = new int[clockParts.length];
-                for (int i = 0; i < clockParts.length; i++) {
-                    receivedClock[i] = Integer.parseInt(clockParts[i]);
-                }
-                if (receivedClock.length != vectorClock.length) {
-                    System.out.println("Tamanho do relógio vetorial inválido");
-                    return;
-                }
-                for (int i = 0; i < vectorClock.length; i++) {
-                    vectorClock[i] = Math.max(vectorClock[i], receivedClock[i]);
-                    matrixClock[processId][i] = vectorClock[i];
-                }
-                vectorClock[processId]++;
-                deliver(msg);
-                // Adiciona a mensagem recebida ao buffer
-                buffer.add(received);
-            } catch (NumberFormatException e) {
-                System.out.println("Formato de relógio vetorial inválido");
-            }
-        } catch (Exception e) {
-            // Timeout ou erro ao receber pacote
+        String message = parts[0];
+        int[] receivedVectorClock = Arrays.stream(parts[1].replaceAll("[\\[\\] ]", "").split(","))
+                .mapToInt(Integer::parseInt).toArray();
+
+        System.out.println("Mensagem recebida: " + message);
+        System.out.println("Relógio lógico recebido: " + Arrays.toString(receivedVectorClock));
+
+        if (isDeliverable(receivedVectorClock)) {
+            this.client.deliver(message);
+            vectorClock[processId]++;
+            updateMatrixClock(receivedVectorClock);
+        } else {
+            delayedMessages.add(new DelayedMessage(message, receivedVectorClock, false, -1));
         }
     }
 
-    public void startReceiving() {
-        Thread multicastThread = new Thread(() -> {
+    private boolean isDeliverable(int[] receivedVectorClock) {
+        for (int i = 0; i < NUM_PROCESSES; i++) {
+            if (receivedVectorClock[i] > matrixClock[processId][i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void updateMatrixClock(int[] receivedVectorClock) {
+        for (int i = 0; i < NUM_PROCESSES; i++) {
+            matrixClock[processId][i] = Math.max(matrixClock[processId][i], receivedVectorClock[i]);
+        }
+        System.out.println("Matriz de relógios atualizada: " + Arrays.deepToString(matrixClock));
+    }
+
+    public void receive() {
+        new Thread(() -> {
             while (running.get()) {
                 try {
                     receiveMulticast();
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
-        });
-
-        Thread unicastThread = new Thread(() -> {
-            while (running.get()) {
-                try {
                     receiveUnicast();
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
             }
-        });
-
-        multicastThread.start();
-        unicastThread.start();
+        }).start();
     }
 
-    public void stopReceiving() {
+    public void close() throws Exception {
         running.set(false);
+        multicastSocket.leaveGroup(group);
         multicastSocket.close();
         unicastSocket.close();
     }
 
-    public static void main(String[] args) throws Exception {
-        Scanner scanner = new Scanner(System.in);
-        System.out.print("Enter IP address: ");
-        String ip = scanner.nextLine();
-        System.out.print("Enter port: ");
-        int port = scanner.nextInt();
-        scanner.nextLine();  // Consome a nova linha após a entrada do número
-        IStableMulticast client = new IStableMulticast() {
-            @Override
-            public void deliver(String msg) {
-                System.out.println("Delivered: " + msg);
-            }
-        };
-        StableMulticast stableMulticast = new StableMulticast(ip, port, client);
-        stableMulticast.startReceiving();
-        
-        stableMulticast.discoverInstances();
-        stableMulticast.announcePresence();
-
-        while (true) {
-            System.out.print("Enter message: ");
-            String msg = scanner.nextLine();
-            if (msg.equalsIgnoreCase("exit")) {
-                stableMulticast.stopReceiving();
-                break;
-            } else if (msg.equalsIgnoreCase("d")) {
-                stableMulticast.sendDelayedMessages();
-            } else if (msg.equalsIgnoreCase("m")) {
-                System.out.print("Enter multicast message: ");
-                msg = scanner.nextLine();
-                stableMulticast.msend(msg);
-            } else if (msg.equalsIgnoreCase("u")) {
-                System.out.print("Enter unicast message: ");
-                msg = scanner.nextLine();
-                System.out.print("Enter target process ID: ");
-                int targetProcessId = scanner.nextInt();
-                scanner.nextLine();  // Consome a nova linha após a entrada do número
-                stableMulticast.usend(msg, targetProcessId);
-            } else {
-                System.out.println("Comando desconhecido: " + msg);
+    private void discardStableMessages() {
+        for (Iterator<DelayedMessage> iterator = delayedMessages.iterator(); iterator.hasNext(); ) {
+            DelayedMessage delayedMessage = iterator.next();
+            if (isDeliverable(delayedMessage.vectorClock)) {
+                this.client.deliver(delayedMessage.message);
+                vectorClock[processId]++;
+                updateMatrixClock(delayedMessage.vectorClock);
+                iterator.remove();
+                System.out.println("Mensagem removida: " + delayedMessage.message);
             }
         }
-        scanner.close();
     }
+    
 
-    // Classe interna para armazenar mensagens atrasadas
     private class DelayedMessage {
         String message;
         int[] vectorClock;
@@ -370,4 +304,5 @@ public class StableMulticast implements IStableMulticast {
             this.targetProcessId = targetProcessId;
         }
     }
+
 }
